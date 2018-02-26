@@ -1,6 +1,7 @@
-from threading import Thread
+from threading import Thread, local
 
-__all__ = ["EventThreader"]
+__all__ = ["EventThreader", "ClientWorker"]
+ClientWorker = local()
 
 
 class EventThreader:
@@ -28,26 +29,30 @@ class EventThreader:
 
         callbacks = self.listeners[event]
         if type(callbacks) == tuple:
-            args = EventThreader._handle_options(source, list(args), callbacks[1])
+            args = list(args)
+            args.insert(0, source)
+            args.insert(1, callbacks[0])
             if callbacks[1].get("thread", True):
-                t = Thread(target=callbacks[0], args=args, kwargs=kwargs)
+                t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                 t.start()
                 return t
             else:
-                return callbacks[0](*args, **kwargs)
+                return self._run_with_ctx(*args, **kwargs)
         else:
-            values = []
             for callback in callbacks:
-                args = EventThreader._handle_options(source, list(args), callback[1])
+                args = list(args)
+                args.insert(0, source)
+                args.insert(1, callbacks[0])
                 if callback[1].get("thread", True):
-                    t = Thread(target=callback[0], args=args, kwargs=kwargs)
+                    t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                     t.start()
                     return t
                 else:
-                    values.append(callback[0](*args, **kwargs))
-            return values
+                    return self._run_with_ctx(*args, **kwargs)
 
-    def _handle_options(self, args: list, kwargs: dict):
-        if kwargs.get("pass_client", False):
-            args.insert(0, self)
-        return args
+    @staticmethod
+    def _run_with_ctx(ctx, target, *args, **kwargs):
+        for key in dir(ctx):
+            if not hasattr(ClientWorker, key):
+                setattr(ClientWorker, key, getattr(ctx, key))
+        target(*args, **kwargs)

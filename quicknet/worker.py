@@ -18,7 +18,7 @@ class ClientWorker(Thread):
 
     def send(self, data: bytes):
         if len(data) > self.server.buffer_size:
-            raise utils.DataOverflowError("Too much information (max {} bytes".format(self.server.buffer_size))
+            raise utils.DataOverflowError("Too much information (max {} bytes)".format(self.server.buffer_size))
         if self.closed:
             raise utils.NotRunningError("Worker is not connected to client.")
         self.conn.sendall(data)

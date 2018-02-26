@@ -28,6 +28,8 @@ def show_ask(welcome):
 def new_msg(msg, name):
     if name != username:
         print(name, ":", msg)
+    else:
+        print("You:", msg)
 
 
 client.start()
@@ -38,4 +40,3 @@ while not logged_in:
 for msg in messages:
     sleep(1)
     client.call("MSG", msg)
-    print("You:", msg)

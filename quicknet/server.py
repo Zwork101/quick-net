@@ -72,5 +72,5 @@ class QServer(event.EventThreader, socket.socket):
                     client.start()
 
     def broadcast(self, handler: str, *args, **kwargs):
-        for queue in self.queues.values():
-            queue.put((handler, args, kwargs))
+        for client in self.clients.values():
+            client.emit(handler, *args, **kwargs)
