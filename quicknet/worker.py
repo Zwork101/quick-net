@@ -15,6 +15,7 @@ class ClientWorker(Thread):
         self.conn = conn
         self.server = manager
         self.closed = False
+        self.info = {}
 
     def send(self, data: bytes):
         if len(data) > self.server.buffer_size:
