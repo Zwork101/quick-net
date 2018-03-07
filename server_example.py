@@ -36,4 +36,6 @@ def error(msg):
 
 
 print("Starting Program")
-server.run()
+server.start()
+input()
+server.quit()

@@ -1,6 +1,9 @@
 from threading import Thread
 from traceback import print_exception
-import pickle
+try:
+    import dill as pickle
+except ModuleNotFoundError:
+    import pickle
 import socket
 import sys
 from queue import Queue
@@ -39,7 +42,8 @@ class QClient(event.EventThreader, Thread, socket.socket):
             raise utils.NotRunningError("Not connected to server")
         data = pickle.dumps((handler, args, kwargs))
         if len(data) > self.buffer_size:
-            raise utils.DataOverflowError("Too much data to send ({} > {})".format(len(data), self.buffer_size))
+            raise utils.DataOverflowError("Too much data to send ({size} > {max})"
+                                          .format(size=len(data), max=self.buffer_size))
         self.sendall(data)
 
     def run(self):
@@ -66,4 +70,3 @@ class QClient(event.EventThreader, Thread, socket.socket):
     def quit(self):
         self.running = False
         self.close()
-

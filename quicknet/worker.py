@@ -1,5 +1,8 @@
 from threading import Thread
-import pickle
+try:
+    import dill as pickle
+except ModuleNotFoundError:
+    import pickle
 import socket
 
 from quicknet import utils
@@ -13,13 +16,14 @@ class ClientWorker(Thread):
         super().__init__(name=id)
 
         self.conn = conn
+        self.addr = conn.getpeername()
         self.server = manager
         self.closed = False
         self.info = {}
 
     def send(self, data: bytes):
         if len(data) > self.server.buffer_size:
-            raise utils.DataOverflowError("Too much information (max {} bytes)".format(self.server.buffer_size))
+            raise utils.DataOverflowError("Too much information (max {len} bytes)".format(len=self.server.buffer_size))
         if self.closed:
             raise utils.NotRunningError("Worker is not connected to client.")
         self.conn.sendall(data)
@@ -28,16 +32,14 @@ class ClientWorker(Thread):
         while not self.closed:
             try:
                 data = self.conn.recv(self.server.buffer_size)
-            except ConnectionResetError:
+            except (ConnectionResetError, ConnectionAbortedError):
                 self.kill()
-                self.server.emit(self, "CLIENT_DISCONNECT", self)
                 continue
             if data:
                 try:
                     handler, args, kwargs = pickle.loads(data)
                 except (ValueError, pickle.UnpicklingError):
-                    msg = pickle.dumps(("ERROR", ["Malformed request, unable to unpickle, or to few values."], {}))
-                    self.send(msg)
+                    self.emit("ERROR", "Malformed request, unable to unpickle, or to few values.")
                 else:
                     self.server.emit(self, handler, *args, **kwargs)
 
@@ -46,5 +48,8 @@ class ClientWorker(Thread):
         self.send(cmd)
 
     def kill(self):
+        if self.closed:
+            raise utils.NotRunningError("Connection not made, can't kill non-existent connection.")
         self.conn.close()
         self.closed = True
+        self.server.emit(self, "CLIENT_DISCONNECT", self)
