@@ -2,7 +2,8 @@ from time import sleep
 
 from quicknet.client import QClient
 
-client = QClient("127.0.0.1", 5421)
+# Change use_ssl to True, to activate ssl's TRUE POWER (server must have ssl enabled too)
+client = QClient("127.0.0.1", 5421, use_ssl=False)
 logged_in = False
 username = None
 password = None

@@ -1,7 +1,8 @@
 from quicknet.server import QServer
 from quicknet.event import ClientWorker
 
-server = QServer(5421)
+# Change use_ssl to True, to activate ssl's TRUE POWER (client must have ssl enabled too)
+server = QServer(5421, use_ssl=False, ssl_data={'keyfile': 'selfsigned.key', 'certfile': 'selfsigned.crt'})
 
 users = {}
 
