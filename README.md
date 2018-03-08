@@ -40,6 +40,10 @@ server.broadcast("WELCOME", "Player {name} just joined the party!".format(name="
 See the github wiki on this repo for the docs, which has the API, and more details, such as how to communicate 
 to a server using quick-connect, without quick-connect.
 
+# Design
+![flowchart](https://docs.google.com/drawings/d/e/2PACX-1vTMsSmu-2IDhVvM8MiY8gEsLtPd0xJmcuVLfMLF-wnhtuf-X27012i5QhtI2lOFLj1qn6BLnvtr1ViY/pub?w=960&amp;h=720)
+Enough said.
+
 # Credits
 This was made by Nathan Zilora, also on discord known as `Zwack010#5682`
 This project is registered in the MIT licesnse, so make sure to include
