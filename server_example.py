@@ -1,9 +1,13 @@
+import logging
+
 from quicknet.server import QServer
 from quicknet.event import ClientWorker
 
+# Add LOGGING! Yes, this library has logging.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('MyServerLogger')
 # Change use_ssl to True, to activate ssl's TRUE POWER (client must have ssl enabled too)
 server = QServer(5421, use_ssl=False, ssl_data={'keyfile': 'selfsigned.key', 'certfile': 'selfsigned.crt'})
-
 users = {}
 
 

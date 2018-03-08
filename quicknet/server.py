@@ -1,3 +1,4 @@
+import logging as log
 from traceback import print_exception
 from threading import Thread
 import ssl
@@ -5,9 +6,7 @@ import sys
 import socket
 from uuid import uuid4
 
-from quicknet import event
-from quicknet import utils
-from quicknet import worker
+from quicknet import event, utils, worker
 
 __all__ = ['QServer']
 
@@ -37,6 +36,8 @@ class QServer(event.EventThreader, Thread):
                                         ssl_data.get('ssl_version', ssl.PROTOCOL_SSLv23), ssl_data.get('ca_certs'),
                                         ssl_data.get('do_handshake_on_connect', True),
                                         ssl_data.get('suppress_ragged_eofs', True), ssl_data.get('ciphers'))
+            log.debug("SSL Added to QServer instance.")
+        log.debug("QServer instance finished initialization.")
 
     @staticmethod
     def error_handler(callback=None):
@@ -44,28 +45,34 @@ class QServer(event.EventThreader, Thread):
             sys.excepthook = print_exception
         else:
             sys.excepthook = callback
+        log.info("Exception hook changed to: {handler}.".format(handler=sys.excepthook))
 
     def quit(self):
         if not self.running:
+            log.warning("Attempt to stop server failed, server wasn't running.")
             raise utils.NotRunningError("The server hasn't been started yet.")
 
         self.running = False
         for client in self.clients.values():
             client.kill()
         self.sock.close()
+        log.info("Server has stopped.")
 
     def run(self, max=50):
         if self.local:
             self.sock.bind(('127.0.0.1', self.port))
         else:
             self.sock.bind(('0.0.0.0', self.port))
+        log.debug("Server has binded to the computer in port {port}".format(port=self.port))
 
         self.running = True
         self.sock.listen(max)
 
+        log.debug("Starting connection loop.")
         while self.running:
             try:
                 conn, addr = self.sock.accept()
+                log.info("New connection {addr}".format(addr=addr))
             except OSError:
                 continue
             if conn.getpeername()[0] not in [c.addr[0] for c in self.clients.values()]:
@@ -74,6 +81,7 @@ class QServer(event.EventThreader, Thread):
                 self.clients[id] = client
                 client.start()
                 self.emit(client, 'CONNECTION', conn, addr)
+                log.debug("Worker for connection {addr} created".format(addr=addr))
             else:
                 # Ug, already have worker as a variable :p
                 employee = [c for c in self.clients.values() if c.addr[0] == conn.getpeername()[0]][0]
@@ -84,8 +92,11 @@ class QServer(event.EventThreader, Thread):
                 self.clients[client.name] = client
                 client.start()
                 self.emit(client, 'CONNECTION_RESET', conn, addr)
+                log.debug("Client {addr} that disconnected reconnected, supplying worker for it".format(addr=addr))
 
     def broadcast(self, handler: str, *args, **kwargs):
         for client in self.clients.values():
             if not client.closed:
                 client.emit(handler, *args, **kwargs)
+        log.info("Broadcasted event to {clients}".format(
+            clients=[c for c in self.clients.values() if not client.closed]))

@@ -1,18 +1,17 @@
+import logging
 from time import sleep
 
 from quicknet.client import QClient
 
+# Add LOGGING! Yes, this library has logging.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('MyServerLogger')
 # Change use_ssl to True, to activate ssl's TRUE POWER (server must have ssl enabled too)
 client = QClient("127.0.0.1", 5421, use_ssl=False)
 logged_in = False
 username = None
 password = None
 messages = ("Hello dude!", "How are you?", "I'm great, thanks", "this could be a much better example than it is.")
-
-
-@client.on("ERROR")
-def error(err):
-    print(err)
 
 
 @client.on("WELCOME")

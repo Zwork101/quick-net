@@ -1,4 +1,4 @@
-__all__ = ["QuickNetError", "NotRunningError", "DataOverflowError"]
+__all__ = ["QuickNetError", "NotRunningError", "DataOverflowError", "UnSterilizable", "BadSterilization"]
 
 
 class QuickNetError(Exception):
@@ -10,4 +10,12 @@ class NotRunningError(QuickNetError):
 
 
 class DataOverflowError(QuickNetError):
+    pass
+
+
+class UnSterilizable(QuickNetError):
+    pass
+
+
+class BadSterilization(QuickNetError):
     pass

@@ -1,3 +1,4 @@
+import logging as log
 from threading import Thread, local
 
 __all__ = ["EventThreader", "ClientWorker"]
@@ -21,6 +22,7 @@ class EventThreader:
                     self.listeners[event].append((func, options))
             else:
                 self.listeners[event] = (func, options)
+            log.debug("Event handler for {event} added.".format(event=event))
         return wrapper
 
     def emit(self, source, event, *args, **kwargs):
@@ -35,8 +37,10 @@ class EventThreader:
             if callbacks[1].get("thread", True):
                 t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                 t.start()
+                log.debug("Threaded event {event} from {source} started.".format(event=event, source=source))
                 return t
             else:
+                log.debug("Non-threaded event {event} from {source} started.".format(event=event, source=source))
                 return self._run_with_ctx(*args, **kwargs)
         else:
             for callback in callbacks:
@@ -46,8 +50,10 @@ class EventThreader:
                 if callback[1].get("thread", True):
                     t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                     t.start()
+                    log.debug("Threaded event {event} from {source} started.".format(event=event, source=source))
                     return t
                 else:
+                    log.debug("Non-threaded event {event} from {source} started.".format(event=event, source=source))
                     return self._run_with_ctx(*args, **kwargs)
 
     @staticmethod
@@ -55,4 +61,5 @@ class EventThreader:
         for key in dir(ctx):
             if not hasattr(ClientWorker, key):
                 setattr(ClientWorker, key, getattr(ctx, key))
+        log.debug("{ctx} copied to proxy ClientWorker".format(ctx=ctx))
         target(*args, **kwargs)
