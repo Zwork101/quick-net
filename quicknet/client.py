@@ -5,7 +5,6 @@ from traceback import print_exception
 import ssl
 import socket
 import sys
-from queue import Queue
 
 from quicknet import event, utils, sterilizer
 
@@ -14,21 +13,22 @@ __all__ = ["QClient"]
 
 class QClient(event.EventThreader, Thread):
 
+    EVENTS = 'SERVER_DISCONNECTED',
+
     def __init__(self, ip: str, port: int, buffer_size: int=2047, family: int=socket.AF_INET,
                  type: int=socket.SOCK_STREAM, use_ssl: bool=False, ssl_data: dict=None, timeout: int=2):
         Thread.__init__(self)
         event.EventThreader.__init__(self)
 
-        self.sock = socket.socket(family=family, type=type)
-        self.buffer_size = buffer_size
-        self.ip = ip
-        self.port = port
-        self.running = False
-        self.tasks = Queue()
+        self.sock = socket.socket(family=family, type=type)  # type: socket.socket
+        self.buffer_size = buffer_size                       # type: int
+        self.ip = ip                                         # type: str
+        self.port = port                                     # type: int
+        self.running = False                                 # type: bool
+        self.ssl = use_ssl                                   # type: bool
+        self._reqs = {}                                      # type: dict
+        self.timeout = timeout                               # type: int
         self.error_handler()
-        self.ssl = use_ssl
-        self._reqs = {}
-        self.timeout = timeout
 
         if use_ssl:
             if ssl_data is None:
@@ -88,13 +88,16 @@ class QClient(event.EventThreader, Thread):
                     info = sterilizer.clean(data)
                 except utils.BadSterilization:
                     log.info("Server sent us a malformed call.")
-                    self.emit(self, "BAD_CALL", data)
+                    self.call("BAD_CALL", data)
                 else:
                     log.debug("Received data from server, {len} bytes.".format(len=len(data)))
                     if type(info) == tuple:
                         if len(info) < 3 or len(info) > 3:
                             log.info("Server sent us either to much or too little information.")
-                            self.emit("BAD_CALL", info)
+                            self.call("BAD_CALL", info)
+                        elif info[0] in self.EVENTS:
+                            log.info("Server sent event ({e}) only triggerable by client side.".format(e=info[0]))
+                            self.call("BAD_CALL", info)
                         else:
                             handler, args, kwargs = info
                             self.emit(self, handler, *args, **kwargs)

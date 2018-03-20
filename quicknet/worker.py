@@ -64,6 +64,9 @@ class ClientWorker(Thread):
                     if len(info) < 3 or len(info) > 3:
                         log.info("Client sent us either to much or too little information.")
                         self.emit("BAD_CALL", info)
+                    elif info[0] in self.server.EVENTS:
+                        log.info("Client sent event ({e}) only triggerable server side.".format(e=info[0]))
+                        self.emit("BAD_CALL", info)
                     else:
                         handler, args, kwargs = info
                         self.server.emit(self, handler, *args, **kwargs)
