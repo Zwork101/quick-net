@@ -19,14 +19,14 @@ def new_player(_, address):
     ClientWorker.emit("WELCOME", "Welcome player! Please send your name & pass.")
 
 
-@server.on("NAME")
-def set_name(name, password):
+@server.on("NAME", enforce_annotations=True)
+def set_name(name: str, password: str):
     ClientWorker.info[name] = password
     ClientWorker.shared['name'] = name
 
 
-@server.on("MSG")
-def new_message(msg):
+@server.on("MSG", enforce_annotations=True)
+def new_message(msg: str):
     print("New Message! ({name})".format(name=ClientWorker.shared['name']), msg)
     server.broadcast("NEW_MSG", msg, ClientWorker.shared['name'])
 

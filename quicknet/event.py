@@ -1,6 +1,8 @@
 import logging as log
 from threading import Thread, local
 
+from quicknet.utils import check_annotations
+
 __all__ = ["EventThreader", "ClientWorker"]
 ClientWorker = local()
 
@@ -31,10 +33,15 @@ class EventThreader:
 
         callbacks = self.listeners[event]
         if type(callbacks) == tuple:
-            args = list(args)
-            args.insert(0, source)
-            args.insert(1, callbacks[0])
+            if callbacks[1].get("enforce_annotations", False):
+                if not check_annotations(callbacks[0], args, kwargs):
+                    log.warning("Invalid values were passed when matching annotations, not calling.")
+                    return
+
             if callbacks[1].get("thread", True):
+                args = list(args)
+                args.insert(0, source)
+                args.insert(1, callbacks[0])
                 t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                 t.start()
                 log.debug("Threaded event {event} from {source} started.".format(event=event, source=source))
@@ -44,10 +51,15 @@ class EventThreader:
                 return self._run_with_ctx(*args, **kwargs)
         else:
             for callback in callbacks:
-                args = list(args)
-                args.insert(0, source)
-                args.insert(1, callbacks[0])
+                if callback[1].get("enforce_annotations", False):
+                    if not check_annotations(callback[0], args, kwargs):
+                        log.warning("Invalid values were passed when matching annotations.")
+                        return
+
                 if callback[1].get("thread", True):
+                    args = list(args)
+                    args.insert(0, source)
+                    args.insert(1, callback[0])
                     t = Thread(target=self._run_with_ctx, args=args, kwargs=kwargs)
                     t.start()
                     log.debug("Threaded event {event} from {source} started.".format(event=event, source=source))

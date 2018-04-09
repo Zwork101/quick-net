@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='quick-connect',
-    version='1.3.1',
+    version='1.3.3',
     packages=['quicknet'],
     package_data={'': ['server_example.py', 'client_example.py']},
     include_package_data=True,
