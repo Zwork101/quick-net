@@ -14,8 +14,9 @@ __all__ = ["QClient"]
 class QClient(event.EventThreader, Thread):
 
     EVENTS = 'SERVER_DISCONNECTED',
+    DEFAULT_READ_SIZE = 2048
 
-    def __init__(self, ip: str, port: int, buffer_size: int=2047, family: int=socket.AF_INET,
+    def __init__(self, ip: str, port: int, buffer_size: int=None, family: int=socket.AF_INET,
                  type: int=socket.SOCK_STREAM, use_ssl: bool=False, ssl_data: dict=None, timeout: int=2):
         Thread.__init__(self)
         event.EventThreader.__init__(self)
@@ -28,6 +29,7 @@ class QClient(event.EventThreader, Thread):
         self.ssl = use_ssl                                   # type: bool
         self._reqs = {}                                      # type: dict
         self.timeout = timeout                               # type: int
+        self._last_transmissions = []                        # type: list
         self.error_handler()
 
         if use_ssl:
@@ -77,7 +79,7 @@ class QClient(event.EventThreader, Thread):
         log.info("Starting connection loop (connected to server)")
         while self.running:
             try:
-                data = self.sock.recv(self.buffer_size).decode()
+                data = self.sock.recv(self.buffer_size if self.buffer_size is not None else self.DEFAULT_READ_SIZE)
             except ConnectionResetError:
                 self.quit()
                 log.info("Server disconnected, ending loop.")
@@ -85,7 +87,27 @@ class QClient(event.EventThreader, Thread):
                 continue
             if data:
                 try:
-                    info = sterilizer.clean(data)
+                    if data.startswith(b"<") and self._last_transmissions:
+                        log.info("Server sent new data before finishing old data.")
+                        self.emit("ERROR", "data interrupted, end signal never received")
+                        self._last_transmissions.clear()
+                    if self._last_transmissions:
+                        if data.endswith(b">"):
+                            data = b"".join(self._last_transmissions) + data[:len(data) - 1]
+                            self._last_transmissions.clear()
+                        else:
+                            self._last_transmissions.append(data)
+                            continue
+                    elif data.startswith(b"<"):
+                        if data.endswith(b">"):
+                            data = data[1:len(data) - 1]
+                        else:
+                            self._last_transmissions.append(data[1:])
+                            continue
+                    else:
+                        log.info("Information sent without start / end signals")
+                        self.emit("ERROR", "Information sent without start / end signals")
+                    info = sterilizer.clean(data.decode())
                 except utils.BadSterilization:
                     log.info("Server sent us a malformed call.")
                     self.call("BAD_CALL", data)
@@ -122,15 +144,22 @@ class QClient(event.EventThreader, Thread):
         log.info("Client has been stopped.")
 
     def send(self, data: str or bytes):
+        data = data if type(data) is bytes else data.encode()
+
         if not self.running:
             log.warning("QClient instance isn't connected to the server, unable to send data.")
             raise utils.NotRunningError("Not connected to server")
-        if len(data) > self.buffer_size:
+        if self.buffer_size is not None and len(data) > self.buffer_size:
             log.warning(
                 "Unable to send data, to many bytes ({size} > {max})".format(size=len(data), max=self.buffer_size))
             raise utils.DataOverflowError("Too much data to send ({size} > {max})"
                                           .format(size=len(data), max=self.buffer_size))
-        if type(data) == str:
-            data = data.encode()
+
+        data = b"<" + data + b">"
+        while len(data) > self.DEFAULT_READ_SIZE:
+            to_send = data[:self.DEFAULT_READ_SIZE]
+            self.sock.sendall(to_send)
+            data = data[self.DEFAULT_READ_SIZE:]
+
         self.sock.sendall(data)
         log.debug("Sent data to server ({len} bytes)".format(len=len(data)))

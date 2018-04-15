@@ -8,25 +8,22 @@ __all__ = ["dirty", "clean"]
 
 
 def dirty(obj: any) -> str:
-    if isinstance(obj, str):
+    simple = {bool: "B", int: "I", float: "F"}
+    byt = {"Y": bytearray, "y": bytes}
+    multi = {list: "L", tuple: "T", set: "E"}
+    if type(obj) in simple:
+        return "{n}{data}".format(n=simple[type(obj)], data=obj)
+    elif type(obj) in byt:
+        return "{n}{hex}".format(n=byt[type(obj)], hex=obj.hex())
+    elif type(obj) in multi:
+        if not obj:
+            return multi[type(obj)] + "^"
+        return quote(multi[type(obj)] + ','.join(map(dirty, obj)))
+    elif type(obj) is str:
         return quote("S{obj}".format(obj=obj))
-    elif isinstance(obj, bool):
-        return "B{v}".format(v=1 if obj else 0)
-    elif isinstance(obj, int):
-        return "I{obj}".format(obj=obj)
-    elif isinstance(obj, float):
-        return "F{obj}".format(obj=obj)
     elif obj is None:
         return 'N'
-    elif isinstance(obj, list):
-        if not obj:
-            return "L^"
-        return quote("L" + ','.join(map(dirty, obj)))
-    elif isinstance(obj, tuple):
-        if not obj:
-            return "T^"
-        return quote("T" + ','.join(map(dirty, obj)))
-    elif isinstance(obj, dict):
+    elif type(obj) is dict:
         if not obj:
             return "D^"
         items = []
@@ -35,46 +32,26 @@ def dirty(obj: any) -> str:
         return "D" + quote(','.join(items))
     elif isinstance(obj, BuiltinFunctionType) or isinstance(obj, BuiltinMethodType):
         return quote("b{obj}".format(obj=obj.__name__))
-    elif isinstance(obj, set):
-        if not obj:
-            return "E^"
-        return quote("E" + ','.join(map(dirty, obj)))
-    elif isinstance(obj, bytearray):
-        return "Y" + quote(obj.hex())
-    elif isinstance(obj, bytes):
-        return "y" + quote(obj.hex())
     else:
+        print(obj, type(obj))
         raise UnSterilizable("Can't sterilize type: {typ}".format(typ=type(obj)))
 
 
 def clean(text: str):
+    simple = {'S': unquote, 'B': bool, 'I': int, 'F': float, 'N': lambda x: None}
+    byt = {'Y': bytearray, 'y': bytes}
+    multi = {'L': list, 'T': tuple, 'E': set}
     try:
         typ, data = text[:1], text[1:]
-        if typ == 'S':
-            return unquote(data)
-        elif typ == 'B':
-            return bool(data)
-        elif typ == 'I':
-            return int(data)
-        elif typ == 'F':
-            return float(data)
-        elif typ == 'N':
-            return None
-        elif typ == 'L':
+        if typ in simple:
+            return simple[typ](data)
+        elif typ in multi:
             data = unquote(data)
             if data == '^':
-                return []
-            return list(map(clean, data.split(',')))
-        elif typ == 'T':
-            data = unquote(data)
-            if data == '^':
-                return tuple()
-            return tuple(map(clean, data.split(',')))
-        elif typ == 'E':
-            data = unquote(data)
-            if data == '^':
-                return set()
-            return set(map(clean, data.split(',')))
+                return multi[typ]()
+            return multi[typ](map(clean, data.split(',')))
+        elif typ in byt:
+            return byt[typ].fromhex(unquote(data))
         elif typ == 'D':
             data = unquote(data)
             if data == '^':
@@ -84,11 +61,8 @@ def clean(text: str):
             return new
         elif typ == 'b':
             return getattr(builtins, unquote(data))
-        elif typ == 'Y':
-            return bytearray.fromhex(data)
-        elif typ == 'y':
-            return bytes.fromhex(data)
         else:
+            print(typ, text)
             raise Exception("Unable to find type for {d}".format(d=typ))
     except Exception as e:
-        raise BadSterilization(str(e))
+        raise BadSterilization(e)

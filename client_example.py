@@ -1,5 +1,6 @@
 import logging
 from time import sleep
+from os import urandom
 
 from quicknet.client import QClient
 
@@ -8,8 +9,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('MyServerLogger')
 # Change use_ssl to True, to activate ssl's TRUE POWER (server must have ssl enabled too)
 client = QClient("127.0.0.1", 5421, use_ssl=True)
-messages = ("Hello dude!", "How are you?", "I'm great, thanks", "this could be a much better example than it is.", 5)
+messages = ("Hello dude!", "How are you?", "I'm great, thanks",
+            "this could be a much better example than it is.", 5, str(urandom(4000)))
 # The server is using check_annotations
+# The urandom is to show off, that there is no size limit to data. That sends more then 4000 bytes
 
 
 def main():
@@ -36,6 +39,11 @@ def new_msg(msg, name):
         print(name, ":", msg)
     else:
         print("You:", msg)
+
+
+@client.on("ERROR")
+def error(issue: str):
+    print(issue)
 
 
 client.start()

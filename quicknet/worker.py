@@ -19,6 +19,7 @@ class ClientWorker(Thread):
         self.info = {}
         self.shared = {}
         self._lock_sharing = [False]
+        self._last_transmissions = []
         log.debug("Finished ClientWorker initialization.")
 
     def __repr__(self):
@@ -34,30 +35,59 @@ class ClientWorker(Thread):
         self._lock_sharing[0] = val
 
     def send(self, data: bytes or str):
-        if len(data) > self.server.buffer_size:
+        data = data if type(data) is bytes else data.encode()
+
+        if self.server.buffer_size is not None and len(data) > self.server.buffer_size:
             log.warning(
                 "Can't send information, too much ({len} > {max})".format(len=len(data), max=self.server.buffer_size))
             raise utils.DataOverflowError("Too much information (max {len} bytes)".format(len=self.server.buffer_size))
         if self.closed:
             log.warning("Can't send data, Worker not connected to client.")
             raise utils.NotRunningError("Worker is not connected to client.")
-        self.conn.sendall(data.encode() if isinstance(data, str) else data)
+
+        data = b"<" + data + b">"
+        while len(data) > self.server.DEFAULT_READ_SIZE:
+            to_send = data[:self.server.DEFAULT_READ_SIZE]
+            self.conn.sendall(to_send)
+            data = data[self.server.DEFAULT_READ_SIZE:]
+
+        self.conn.sendall(data)
         log.debug("Data sent to client, {len} bytes".format(len=len(data)))
 
     def run(self):
         log.info("Worker loop started, looking for data.")
         while not self.closed:
             try:
-                data = self.conn.recv(self.server.buffer_size)
+                data = self.conn.recv(self.server.buffer_size if self.server.buffer_size else 2048)
             except ConnectionResetError:
                 log.info("Client Disconnected (addr {addr})".format(addr=self.addr))
                 self.kill()
                 continue
             try:
+                if data.startswith(b"<") and self._last_transmissions:
+                    log.info("Client sent new data before finishing old data.")
+                    self.emit("ERROR", "data interrupted, end signal never received")
+                    self._last_transmissions.clear()
+                if self._last_transmissions:
+                    if data.endswith(b">"):
+                        data = b"".join(self._last_transmissions) + data[:len(data) - 1]
+                        self._last_transmissions.clear()
+                    else:
+                        self._last_transmissions.append(data)
+                        continue
+                elif data.startswith(b"<"):
+                    if data.endswith(b">"):
+                        data = data[1:len(data) - 1]
+                    else:
+                        self._last_transmissions.append(data[1:])
+                        continue
+                else:
+                    log.info("Information sent without start / end signals")
+                    self.emit("ERROR", "Information sent without start / end signals")
                 info = sterilizer.clean(data.decode())
             except utils.BadSterilization:
                 log.info("Client sent us a malformed call.")
-                self.emit(self, "BAD_CALL", data)
+                self.emit("BAD_CALL", data)
             else:
                 log.debug("Received data from client, {len} bytes.".format(len=len(data)))
                 if type(info) == tuple:

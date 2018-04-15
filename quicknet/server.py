@@ -14,8 +14,9 @@ __all__ = ['QServer']
 class QServer(event.EventThreader, Thread):
 
     EVENTS = 'CONNECTION', 'CONNECTION_RESET', 'SERVER_REQUEST', 'CLIENT_DISCONNECT'
+    DEFAULT_READ_SIZE = 2048
 
-    def __init__(self, port: int, local_only: bool=False, buffer_size: int=2047, family: int=socket.AF_INET,
+    def __init__(self, port: int, local_only: bool=False, buffer_size: int=None, family: int=socket.AF_INET,
                  type: int=socket.SOCK_STREAM, use_ssl: bool=False, ssl_data: dict=None):
 
         event.EventThreader.__init__(self)
