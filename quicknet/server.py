@@ -57,6 +57,8 @@ class QServer(event.EventThreader, Thread):
 
         self.running = False
         for client in self.clients.values():
+            if client.closed:
+                continue
             client.kill()
         self.sock.close()
         log.info("Server has stopped.")

@@ -5,6 +5,7 @@ from traceback import print_exception
 import ssl
 import socket
 import sys
+import zlib
 
 from quicknet import event, utils, sterilizer
 
@@ -29,7 +30,7 @@ class QClient(event.EventThreader, Thread):
         self.ssl = use_ssl                                   # type: bool
         self._reqs = {}                                      # type: dict
         self.timeout = timeout                               # type: int
-        self._last_transmissions = []                        # type: list
+        self._buffer = bytearray()                           # type: bytearray
         self.error_handler()
 
         if use_ssl:
@@ -87,30 +88,17 @@ class QClient(event.EventThreader, Thread):
                 continue
             if data:
                 try:
-                    if data.startswith(b"<") and self._last_transmissions:
-                        log.info("Server sent new data before finishing old data.")
-                        self.emit("ERROR", "data interrupted, end signal never received")
-                        self._last_transmissions.clear()
-                    if self._last_transmissions:
-                        if data.endswith(b">"):
-                            data = b"".join(self._last_transmissions) + data[:len(data) - 1]
-                            self._last_transmissions.clear()
-                        else:
-                            self._last_transmissions.append(data)
-                            continue
-                    elif data.startswith(b"<"):
-                        if data.endswith(b">"):
-                            data = data[1:len(data) - 1]
-                        else:
-                            self._last_transmissions.append(data[1:])
-                            continue
-                    else:
-                        log.info("Information sent without start / end signals")
-                        self.emit("ERROR", "Information sent without start / end signals")
-                    info = sterilizer.clean(data.decode())
-                except utils.BadSterilization:
+                    self._buffer.extend(data)
+                    if len(data) < 4 or data[-4:] != b'\x00\x00\xff\xff':
+                        continue
+                    inflator = zlib.decompressobj()
+                    inflated_data = inflator.decompress(self._buffer) + inflator.flush(zlib.Z_SYNC_FLUSH)
+                    self._buffer = bytearray()
+                    info = sterilizer.clean(inflated_data.decode())
+                except zlib.error as ERROR:
+                    print(ERROR)
                     log.info("Server sent us a malformed call.")
-                    self.call("BAD_CALL", data)
+                    self.emit("BAD_CALL", data)
                 else:
                     log.debug("Received data from server, {len} bytes.".format(len=len(data)))
                     if type(info) == tuple:
@@ -149,17 +137,14 @@ class QClient(event.EventThreader, Thread):
         if not self.running:
             log.warning("QClient instance isn't connected to the server, unable to send data.")
             raise utils.NotRunningError("Not connected to server")
-        if self.buffer_size is not None and len(data) > self.buffer_size:
-            log.warning(
-                "Unable to send data, to many bytes ({size} > {max})".format(size=len(data), max=self.buffer_size))
-            raise utils.DataOverflowError("Too much data to send ({size} > {max})"
-                                          .format(size=len(data), max=self.buffer_size))
 
-        data = b"<" + data + b">"
-        while len(data) > self.DEFAULT_READ_SIZE:
-            to_send = data[:self.DEFAULT_READ_SIZE]
+        deflator = zlib.compressobj()
+        deflated_data = deflator.compress(data) + deflator.flush(zlib.Z_SYNC_FLUSH)
+
+        while len(deflated_data) > self.DEFAULT_READ_SIZE:
+            to_send = deflated_data[:self.DEFAULT_READ_SIZE]
             self.sock.sendall(to_send)
-            data = data[self.DEFAULT_READ_SIZE:]
+            deflated_data = deflated_data[self.DEFAULT_READ_SIZE:]
 
-        self.sock.sendall(data)
+        self.sock.sendall(deflated_data)
         log.debug("Sent data to server ({len} bytes)".format(len=len(data)))

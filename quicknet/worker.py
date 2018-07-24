@@ -1,6 +1,7 @@
 import logging as log
 from threading import Thread
 import socket
+import zlib
 
 from quicknet import utils, sterilizer
 
@@ -19,7 +20,7 @@ class ClientWorker(Thread):
         self.info = {}
         self.shared = {}
         self._lock_sharing = [False]
-        self._last_transmissions = []
+        self._buffer = bytearray()
         log.debug("Finished ClientWorker initialization.")
 
     def __repr__(self):
@@ -36,22 +37,19 @@ class ClientWorker(Thread):
 
     def send(self, data: bytes or str):
         data = data if type(data) is bytes else data.encode()
-
-        if self.server.buffer_size is not None and len(data) > self.server.buffer_size:
-            log.warning(
-                "Can't send information, too much ({len} > {max})".format(len=len(data), max=self.server.buffer_size))
-            raise utils.DataOverflowError("Too much information (max {len} bytes)".format(len=self.server.buffer_size))
         if self.closed:
             log.warning("Can't send data, Worker not connected to client.")
             raise utils.NotRunningError("Worker is not connected to client.")
 
-        data = b"<" + data + b">"
-        while len(data) > self.server.DEFAULT_READ_SIZE:
-            to_send = data[:self.server.DEFAULT_READ_SIZE]
-            self.conn.sendall(to_send)
-            data = data[self.server.DEFAULT_READ_SIZE:]
+        deflator = zlib.compressobj()
+        deflated_data = deflator.compress(data) + deflator.flush(zlib.Z_SYNC_FLUSH)
 
-        self.conn.sendall(data)
+        while len(deflated_data) > self.server.DEFAULT_READ_SIZE:
+            to_send = deflated_data[:self.server.DEFAULT_READ_SIZE]
+            self.conn.sendall(to_send)
+            deflated_data = deflated_data[self.server.DEFAULT_READ_SIZE:]
+
+        self.conn.sendall(deflated_data)
         log.debug("Data sent to client, {len} bytes".format(len=len(data)))
 
     def run(self):
@@ -59,33 +57,19 @@ class ClientWorker(Thread):
         while not self.closed:
             try:
                 data = self.conn.recv(self.server.buffer_size if self.server.buffer_size else 2048)
-            except ConnectionResetError:
+            except (ConnectionResetError, OSError, ConnectionAbortedError):
                 log.info("Client Disconnected (addr {addr})".format(addr=self.addr))
                 self.kill()
                 continue
             try:
-                if data.startswith(b"<") and self._last_transmissions:
-                    log.info("Client sent new data before finishing old data.")
-                    self.emit("ERROR", "data interrupted, end signal never received")
-                    self._last_transmissions.clear()
-                if self._last_transmissions:
-                    if data.endswith(b">"):
-                        data = b"".join(self._last_transmissions) + data[:len(data) - 1]
-                        self._last_transmissions.clear()
-                    else:
-                        self._last_transmissions.append(data)
-                        continue
-                elif data.startswith(b"<"):
-                    if data.endswith(b">"):
-                        data = data[1:len(data) - 1]
-                    else:
-                        self._last_transmissions.append(data[1:])
-                        continue
-                else:
-                    log.info("Information sent without start / end signals")
-                    self.emit("ERROR", "Information sent without start / end signals")
-                info = sterilizer.clean(data.decode())
-            except utils.BadSterilization:
+                self._buffer.extend(data)
+                if len(data) < 4 or data[-4:] != b'\x00\x00\xff\xff':
+                    continue
+                inflator = zlib.decompressobj()
+                inflated_data = inflator.decompress(self._buffer) + inflator.flush(zlib.Z_SYNC_FLUSH)
+                self._buffer = bytearray()
+                info = sterilizer.clean(inflated_data.decode())
+            except zlib.error:
                 log.info("Client sent us a malformed call.")
                 self.emit("BAD_CALL", data)
             else:

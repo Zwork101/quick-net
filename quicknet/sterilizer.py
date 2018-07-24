@@ -9,7 +9,7 @@ __all__ = ["dirty", "clean"]
 
 def dirty(obj: any) -> str:
     simple = {bool: "B", int: "I", float: "F"}
-    byt = {"Y": bytearray, "y": bytes}
+    byt = {bytearray: "Y", bytes: "y"}
     multi = {list: "L", tuple: "T", set: "E"}
     if type(obj) in simple:
         return "{n}{data}".format(n=simple[type(obj)], data=obj)
